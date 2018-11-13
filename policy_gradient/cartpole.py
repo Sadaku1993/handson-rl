@@ -1,86 +1,101 @@
 #coding:utf-8
 
-# https://deepage.net/features/numpy-rl.html#%E6%96%B9%E7%AD%96%E5%8B%BE%E9%85%8D%E6%B3%95
-
-import gym
 import numpy as np
+import gym
+import math
 import matplotlib.pyplot as plt
+import tensorflow as tf
 
-def do_episode(w, env):
-    done = False
-    observation = env.reset()
-    num_steps = 0
+n_inputs = 4
+n_hidden = 4
+n_outputs = 1
 
-    while not done and num_steps <= max_number_of_steps:
-        action = take_action(observation, w)
-        observation, _, done, _ = env.step(action)
-        num_steps += 1
-    # ここで報酬を与える。基本的に(連続したステップ数)-(最大ステップ数)で与えられる。
-    step_val = -1 if num_steps >= max_number_of_steps else num_steps - max_number_of_steps
-    return step_val, num_steps
+learning_rate = 0.01
 
-def take_action(X, w): # 値が0を超えたら1を返すようにする
-    action = 1 if calculate(X, w) > 0.0 else 0
-    return action
+initializer = tf.variance_scaling_initializer()
 
-def calculate(X, w):
-    result = np.dot(X, w) # 返り値は配列ではなく、１つの値になる。
-    return result
+X = tf.placeholder(tf.float32, shape=[None, n_inputs])
 
-def make_params(shape_list):
-    weight_list = []
-    for i in range(len(shape_list)-1):
-        weight = np.random.randn(shape_list[i], shape_list[i+1])
-        weight_list.append(weight)
-    return weight_list
+hidden = tf.layers.dense(X, n_hidden, activation=tf.nn.elu, kernel_initializer=initializer)
+logits = tf.layers.dense(hidden, n_outputs)
+outputs = tf.nn.sigmoid(logits)
+p_left_and_right = tf.concat(axis=1, values=[outputs, 1 - outputs])
+action = tf.multinomial(tf.log(p_left_and_right), num_samples=1)
+
+y = 1. - tf.to_float(action)
+cross_entropy = tf.nn.sigmoid_cross_entropy_with_logits(labels=y, logits=logits)
+optimizer = tf.train.AdamOptimizer(learning_rate)
+
+grad_and_vars = optimizer.compute_gradients(cross_entropy)
+gradients = [grad for grad, variables in grad_and_vars]
+gradient_placeholders = []
+grads_and_var_feed = []
+
+for grad, variable in grad_and_vars:
+    gradient_placeholder = tf.placeholder(tf.float32, shape=grad.get_shape())
+    gradient_placeholders.append(gradient_placeholder)
+    grads_and_var_feed.append((gradient_placeholder, variable))
+
+training_op = optimizer.apply_gradients(grads_and_var_feed)
+
+init = tf.global_variables_initializer()
+saver = tf.train.Saver()
+
+def discount_rewards(rewards, discount_rate):
+    discounted_rewards = np.zeros(len(rewards))
+    cumulative_rewards = 0
+    for step in reversed(range(len(rewards))):
+        cumulative_rewards = rewards[step] + cumulative_rewards * discount_rate
+        discounted_rewards[step] = cumulative_rewards
+    return discounted_rewards
+
+def discount_and_normalize_rewards(all_rewards, discount_rate):
+    all_discounted_rewards = [discount_rewards(rewards, discount_rate) for rewards in all_rewards]
+    flat_rewards = np.concatenate(all_discounted_rewards)
+    reward_mean = flat_rewards.mean()
+    reward_std = flat_rewards.std()
+    return [(discounted_rewards - reward_mean)/reward_std for discounted_rewards in all_discounted_rewards]
 
 env = gym.make('CartPole-v0')
 
-# env.render()
-# ゲームの様子を見たいときは env.render()を実行すれば良い
+n_games_per_update = 10
+n_max_steps = 200
+n_iterations = 250
+save_iterations = 10
+discount_rate = 0.95
 
-eta = 0.2
-sigma = 0.05 # パラメーターを変動させる値の標準偏差
+with tf.Session() as sess:
+    sess.run(init)
+    for iteration in range(n_iterations):
+        print("Iteration:" + str(iteration))
+        all_rewards = []
+        all_gradients = []
+        for game in range(n_games_per_update):
+            current_rewards = []
+            current_gradients = []
+            obs = env.reset()
+            for step in range(n_max_steps):
+                action_val, gradients_val = sess.run([action, gradients], feed_dict={X: obs.reshape(1, n_inputs)})
+                obs, reward, done, _ = env.step(action_val[0][0])
+                current_rewards.append(reward)
+                current_gradients.append(gradients_val)
+                if done:
+                    break
+            all_rewards.append(current_rewards)
+            all_gradients.append(current_gradients)
 
-max_episodes = 5000 # 学習を行う最大エピソード数
-max_number_of_steps = 200
-n_states = 4 # 入力のパラメーター数
-num_batch = 10
-num_consecutive_iterations = 100 # 評価の範囲のエピソード数
+        all_rewards = discount_and_normalize_rewards(all_rewards, discount_rate=discount_rate)
 
+        feed_dict = {}
 
-w = np.random.randn(n_states)
-reward_list = np.zeros(num_batch)
-reward_h = []
-last_time_steps = np.zeros(num_consecutive_iterations)
-mean_list = [] # 学習の進行具合を過去100エピソードのステップ数の平均で記録する
+        for var_index, gradient_placeholder in enumerate(gradient_placeholders):
+            mean_gradients = np.mean([reward * all_gradients[game_index][step][var_index] 
+                                        for game_index, rewards in enumerate(all_rewards)
+                                            for step, reward in enumerate(rewards)], axis=0)
+            feed_dict[gradient_placeholder] = mean_gradients
 
-for episode in range(max_episodes//num_batch):
-    N = np.random.normal(scale=sigma,size=(num_batch, w.shape[0]))
-    # パラメーターの値を変動させるための値。これが偏差になる。
-
-    for i in range(num_batch):
-        w_try = w + N[i]
-        reward, steps = do_episode(w_try, env)
-        if i == num_batch-1:
-            print('%d Episode finished after %d steps reward %d / mean %f' %(episode*num_batch, steps, reward, last_time_steps.mean()))
-        last_time_steps = np.hstack((last_time_steps[1:], [steps]))
-        reward_list[i] = reward
-        mean_list.append(last_time_steps.mean())
-    if last_time_steps.mean() >= 195: break # 平均が195超えたら学習終了
-
-    std = np.std(reward_list)
-    if std == 0: std = 1
-    # 報酬の値を正規化する
-    A = (reward_list - np.mean(reward_list))/std
-    # ここでパラメーターの更新を行う
-    w_delta = eta /(num_batch*sigma) * np.dot(N.T, A)
-    # 振れ幅を調整するためにsigmaをかけている。
-    w += w_delta
-
+        sess.run(training_op, feed_dict = feed_dict)
+        if iteration % save_iterations == 0:
+            saver.save(sess, "./my_policy_net_pg.ckpt")
 
 env.close()
-# グラフの表示
-
-plt.plot(mean_list)
-plt.show()
