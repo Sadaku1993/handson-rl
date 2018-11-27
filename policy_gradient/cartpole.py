@@ -70,19 +70,24 @@ with tf.Session() as sess:
         print("Iteration:" + str(iteration))
         all_rewards = []
         all_gradients = []
+        iteration_reward = []
         for game in range(n_games_per_update):
             current_rewards = []
             current_gradients = []
+            episode_reward = 0
             obs = env.reset()
             for step in range(n_max_steps):
                 action_val, gradients_val = sess.run([action, gradients], feed_dict={X: obs.reshape(1, n_inputs)})
                 obs, reward, done, _ = env.step(action_val[0][0])
                 current_rewards.append(reward)
                 current_gradients.append(gradients_val)
+                episode_reward += reward
                 if done:
+                    iteration_reward.append(episode_reward)
                     break
             all_rewards.append(current_rewards)
             all_gradients.append(current_gradients)
+        print("---> mean reward:" + str(np.mean(iteration_reward)))
 
         all_rewards = discount_and_normalize_rewards(all_rewards, discount_rate=discount_rate)
 
