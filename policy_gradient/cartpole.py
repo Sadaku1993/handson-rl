@@ -1,21 +1,43 @@
+#coding:utf-8
+
+"""
+CartPole-v0
+
+    Observation: 
+        Type: Box(4)
+        Num	Observation                 Min         Max
+        0	Cart Position             -4.8            4.8
+        1	Cart Velocity             -Inf            Inf
+        2	Pole Angle                 -24°           24°
+        3	Pole Velocity At Tip      -Inf            Inf
+        
+    Actions:
+        Type: Discrete(2)
+        Num	Action
+        0	Push cart to the left
+        1	Push cart to the right
+"""
+
 import tensorflow as tf
 import numpy as np
 import gym
-import matplotlib.pyplot as plt
+
+np.random.seed(2)
+tf.set_random_seed(2)
 
 class PolicyGradient:
     def __init__(
             self, 
-            n_inputs, 
-            n_outputs, 
+            n_features, 
+            n_actions, 
             n_hidden,
             learning_rate=0.01,
             gamma = 0.95,
             output_graph = False
     ):
         self.sess = tf.Session()
-        self.n_inputs = n_inputs
-        self.n_outputs = n_outputs
+        self.n_features = n_features
+        self.n_actions = n_actions
         self.n_hidden = n_hidden
         self.learning_rate = learning_rate
         self.gamma = gamma
@@ -34,7 +56,7 @@ class PolicyGradient:
         with tf.name_scope('input'):
             self.tf_obs = tf.placeholder(
                     tf.float32, 
-                    shape=[None, self.n_inputs], 
+                    shape=[None, self.n_features], 
                     name="observations"
             )
             self.tf_acts = tf.placeholder(
@@ -57,7 +79,7 @@ class PolicyGradient:
         )
         action_prob = tf.layers.dense(
                 inputs = layer1, 
-                units=self.n_outputs, 
+                units=self.n_actions, 
                 activation=tf.nn.softmax, 
                 kernel_initializer = tf.variance_scaling_initializer(),
                 bias_initializer = tf.constant_initializer()
@@ -66,7 +88,7 @@ class PolicyGradient:
         self.action = tf.multinomial(tf.log(action_prob), num_samples=1)
 
         with tf.name_scope('loss'):
-            self.neg_log_prob = -tf.reduce_sum(tf.log(action_prob) * tf.one_hot(self.tf_acts, self.n_outputs), axis=1)
+            self.neg_log_prob = -tf.reduce_sum(tf.log(action_prob) * tf.one_hot(self.tf_acts, self.n_actions), axis=1)
             loss = tf.reduce_mean(self.neg_log_prob * self.tf_value)
 
         with tf.name_scope('train'):
@@ -114,43 +136,43 @@ def main():
     print("action space:", env.action_space)
     print("observation spaace:", env.observation_space)
     
-    n_inputs = env.observation_space.shape[0]
+    n_features = env.observation_space.shape[0]
+    n_actions = env.action_space.n
     n_hidden = 4
-    n_outputs = 2
     
-    max_episodes = 300
+    max_episodes = 2000
     max_steps = 200
 
-    xlabel = []
-    ylabel = []
-
     agent = PolicyGradient(
-            n_inputs = n_inputs,
-            n_outputs = n_outputs,
+            n_features = n_features,
+            n_actions = n_actions,
             n_hidden = n_hidden)
+
+    goal_average_reward = 195
+    num_consecutice_iterations = 20
+    total_reward_vec = np.zeros(num_consecutice_iterations)
 
     for episode in range(max_episodes):
         observation = env.reset()
         
         for step in range(max_steps):
             # env.render()
-            action = agent.choose_action(observation.reshape(1, n_inputs))
+            action = agent.choose_action(observation.reshape(1, n_features))
             observation_, reward, done, _ = env.step(action[0][0])
             agent.store_transition(observation, action[0][0], reward)
 
             if done:
                 episode_reward = sum(agent.ep_reward)
-                print("episode:%3d reward:%3d" % (episode, episode_reward))
+                print('%d Episode finished after %f time steps / mean %f' %
+                      (episode, step + 1, total_reward_vec.mean()))
+                total_reward_vec = np.hstack((total_reward_vec[1:], episode_reward))  
                 agent.learn()
-                xlabel.append(episode)
-                ylabel.append(episode_reward)
                 break
             observation = observation_
 
-    plt.plot(xlabel, ylabel, 'b-')
-    plt.xlabel('episode steps')
-    plt.ylabel('episode rewards')
-    plt.show()
+        if (total_reward_vec.mean() >= goal_average_reward):
+            print('Episode %d train agent successfuly!' % episode)
+            break
 
 if __name__ == '__main__':
     main()

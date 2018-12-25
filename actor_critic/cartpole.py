@@ -21,7 +21,6 @@ CartPole-v0
 import gym
 import numpy as np
 import tensorflow as tf
-import matplotlib.pyplot as plt
 
 np.random.seed(2)
 tf.set_random_seed(2)
@@ -32,7 +31,7 @@ class Actor(object):
             sess,
             n_features,
             n_actions,
-            learning_rate
+            learning_rate=0.001
     ):
         self.sess = sess
 
@@ -80,9 +79,6 @@ class Actor(object):
             log_prob = tf.reduce_sum(tf.log(self.action_prob) * tf.one_hot(self.a, n_actions), axis=1)
             self.exp_v = log_prob * self.td_error
 
-            # log_prob = -tf.reduce_sum(tf.log(self.action_prob) * tf.one_hot(self.a, n_actions), axis=1)
-            # loss = tf.reduce_mean(log_prob * self.td_error)
-
         with tf.variable_scope('train'):
             self.train_op = tf.train.AdamOptimizer(learning_rate).minimize(-self.exp_v)
 
@@ -104,8 +100,8 @@ class Critic(object):
             self,
             sess,
             n_features,
-            learning_rate,
-            gamma
+            learning_rate=0.01,
+            gamma=0.9
     ):
         self.sess = sess
 
@@ -164,17 +160,10 @@ def main():
     print("action space:", env.action_space)
     print("observation spaace:", env.observation_space)
 
-    RENDER = False
-    
     n_features = env.observation_space.shape[0]
-    n_hidden   = 4
-    n_actions  = 2
-    
-    max_episodes = 3000
-    max_steps = 200
+    n_actions  = env.action_space.n
 
-    xlabel = []
-    ylabel = []
+    output_graph = True
 
     sess = tf.Session()
 
@@ -189,10 +178,22 @@ def main():
             sess,
             n_features = n_features,
             learning_rate = 0.01,
-            gamma = 0.99
+            gamma = 0.9
     )
 
+    if output_graph:
+        tf.summary.FileWriter("logs/", sess.graph)
+
     sess.run(tf.global_variables_initializer())
+
+    max_episodes = 2000
+    max_steps = 200
+
+    RENDER = False
+
+    goal_average_reward = 195
+    num_consecutice_iterations = 20
+    total_reward_vec = np.zeros(num_consecutice_iterations)
 
     for episode in range(max_episodes):
         state = env.reset()
@@ -204,9 +205,10 @@ def main():
             action = actor.choose_action(state.reshape(1, n_features))
             next_state, reward, done, _ = env.step(action[0][0])
 
-
-            if done:
-                reward = -20
+            if (done and step<195):
+                reward -= 200
+            else:
+                reward = 1
 
             episode_reward += reward
 
@@ -219,21 +221,20 @@ def main():
             actor.learn(
                     state.reshape(1, n_features),
                     action[0][0],
-                    reward
+                    td_error
             )
 
             if done:
-                print("episode:%3d reward:%3d" % (episode, episode_reward))
-                xlabel.append(episode)
-                ylabel.append(episode_reward)
+                print('%d Episode finished after %f time steps / mean %f' %
+                      (episode, step + 1, total_reward_vec.mean()))
+                total_reward_vec = np.hstack((total_reward_vec[1:], episode_reward))  
                 break
 
-            next_state = state
+            state = next_state
 
-    plt.plot(xlabel, ylabel, 'b-')
-    plt.xlabel('episode steps')
-    plt.ylabel('episode rewards')
-    plt.show()
+        if (total_reward_vec.mean() >= goal_average_reward):
+            print('Episode %d train agent successfuly!' % episode)
+            break
 
 if __name__ == '__main__':
     main()
