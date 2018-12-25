@@ -17,3 +17,6 @@
 #### [Policy Gradient](https://github.com/Sadaku1993/handson-rl/tree/master/policy_gradient)
 
 #### [Actor Critic](https://github.com/Sadaku1993/handson-rl/tree/master/actor_critic)
+
+# Reference
+[Reinforcement-learning-with-tensorflow](https://github.com/MorvanZhou/Reinforcement-learning-with-tensorflow)
