@@ -8,7 +8,7 @@
 - numpy
 - matplotlib
 
-# Session
+# Algorithm
 
 #### [Q_Learning](https://github.com/Sadaku1993/handson-rl/tree/master/q_learning)
 
