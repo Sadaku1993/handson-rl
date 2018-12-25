@@ -19,107 +19,221 @@ CartPole-v0
 """
 
 import gym
-import matplotlib.pyplot as plt
 import numpy as np
+import tensorflow as tf
+import matplotlib.pyplot as plt
 
-env = gym.make('CartPole-v0')
-
-num_episodes = 2000
-max_step = 200
-num_dizitized = 6
-
-# 状態を離散化
-def bins(state_min, state_max, num):
-    return np.linspace(state_min, state_max, num+1)[1:-1]
-
-def digitize_state(observation):
-    cart_position, cart_velocity, pole_angle, pole_velocity = observation
-    digitized = [
-        np.digitize(cart_position, bins=bins(-2.4, 2.4, num_dizitized)),
-        np.digitize(cart_velocity, bins=bins(-3.0, 3.0, num_dizitized)),
-        np.digitize(pole_angle, bins=bins(-0.5, 0.5, num_dizitized)),
-        np.digitize(pole_velocity, bins=bins(-2.0, 2.0, num_dizitized))
-    ]
-    return sum([x*(num_dizitized**i) for i, x in enumerate(digitized)])
-
-class Critic(object):
-    def __init__(self):
-        self.value = np.random.uniform(
-                low=-1, high=1, size=num_dizitized**4)
-        self.gamma = 0.5
-        self.alpha = 0.1
-
-    def update(self, state, reward, next_state):
-        next_value = self.value[next_state]
-        self.value[state] = (1-self.alpha) * self.value[state] + self.alpha * (reward + self.gamma * next_value)
-
-    def td_error(self, state, reward, next_state):
-        next_value = self.value[next_state]
-        return reward + self.gamma * next_value - self.value[state]
-
-    def value(self, state):
-        return self.value[state]
+np.random.seed(2)
+tf.set_random_seed(2)
 
 class Actor(object):
-    def __init__(self):
-        self.action = np.random.uniform(
-                low=0, high=1, size=(num_dizitized**4, env.action_space.n))
-        self.param = 0.5
+    def __init__(
+            self,
+            sess,
+            n_features,
+            n_actions,
+            learning_rate
+    ):
+        self.sess = sess
+
+        self.s = tf.placeholder(
+                tf.float32, 
+                shape = [1, n_features], 
+                name = "state"
+        )
+        self.a = tf.placeholder(
+                tf.int32, 
+                shape = None, 
+                name = "action"
+        )
+        self.td_error = tf.placeholder(
+                tf.float32, 
+                shape = None, 
+                name = "td_error"
+        )
+
+        with tf.variable_scope('Actor'):
+            l1 = tf.layers.dense(
+                    inputs = self.s,
+                    units = 20,
+                    activation = tf.nn.relu,
+                    kernel_initializer = tf.random_normal_initializer(0., 1.),
+                    bias_initializer = tf.constant_initializer(0.1),
+                    name = 'l1'
+            )
+
+            self.action_prob = tf.layers.dense(
+                    inputs = l1,
+                    units = n_actions,
+                    activation = tf.nn.softmax,
+                    kernel_initializer = tf.random_normal_initializer(0., 1.),
+                    bias_initializer = tf.constant_initializer(0.1),
+                    name = "acts_prob"
+            )
+
+            self.action = tf.multinomial(
+                    tf.log(self.action_prob), 
+                    num_samples=1
+            )
+
+        with tf.variable_scope('loss'):
+            log_prob = tf.reduce_sum(tf.log(self.action_prob) * tf.one_hot(self.a, n_actions), axis=1)
+            self.exp_v = log_prob * self.td_error
+
+            # log_prob = -tf.reduce_sum(tf.log(self.action_prob) * tf.one_hot(self.a, n_actions), axis=1)
+            # loss = tf.reduce_mean(log_prob * self.td_error)
+
+        with tf.variable_scope('train'):
+            self.train_op = tf.train.AdamOptimizer(learning_rate).minimize(-self.exp_v)
+
+    def choose_action(self, observation):
+        action = self.sess.run(
+                self.action,
+                feed_dict={self.s:observation}
+        )
+        return action
+
+    def learn(self, state, action, td_error):
+        self.sess.run(
+                self.train_op, 
+                feed_dict={self.s: state, self.a: action, self.td_error: td_error}
+        )
+
+class Critic(object):
+    def __init__(
+            self,
+            sess,
+            n_features,
+            learning_rate,
+            gamma
+    ):
+        self.sess = sess
+
+        self.s = tf.placeholder(
+                tf.float32,
+                shape = [1, n_features],
+                name = "state"
+        )
+
+        self.v_ = tf.placeholder(
+                tf.float32,
+                shape = [1, 1],
+                name = "v_next"
+        )
+
+        self.r = tf.placeholder(
+                tf.float32,
+                shape = None,
+                name = "reward"
+        )
+
+        with tf.variable_scope('Critic'):
+            l1 = tf.layers.dense(
+                    inputs = self.s,
+                    units = 20,
+                    activation = tf.nn.relu,
+                    kernel_initializer = tf.random_normal_initializer(0., 1.),
+                    bias_initializer = tf.constant_initializer(0.1),
+                    name='l1'
+            )
+
+            self.v = tf.layers.dense(
+                    inputs = l1,
+                    units = 1,
+                    activation = None,
+                    kernel_initializer = tf.random_normal_initializer(0. ,1.),
+                    bias_initializer = tf.constant_initializer(0.1),
+                    name="V"
+            )
+
+        with tf.variable_scope('squared_TD_error'):
+            self.td_error = self.r + gamma * self.v_ - self.v
+            self.loss = tf.square(self.td_error) 
+        with tf.variable_scope('train'):
+            self.train_op = tf.train.AdamOptimizer(learning_rate).minimize(self.loss)
+
+    def learn(self, s, r, s_):
+        v_ = self.sess.run(self.v, {self.s: s_})
+        td_error, _ = self.sess.run([self.td_error, self.train_op],
+                                          {self.s: s, self.v_: v_, self.r: r})
+        return td_error
         
-    def update(self, state, action):
-        self.action[state, action] = (self.param + self.action[state, action]) / float(self.param + np.sum(self.action[state]))
+def main():
+    env = gym.make('CartPole-v0')
 
-    def get_action(self, state, episode):
-        epsilon = 0.5 * (1/(episode+1))
-        if epsilon <= np.random.uniform(0, 1):
-            next_action = np.argmax(self.action[state])
-        else:
-            next_action = np.random.choice([0, 1])
-        return next_action
+    print("action space:", env.action_space)
+    print("observation spaace:", env.observation_space)
 
-goal_average_reward = 195
-num_consecutice_iterations = 100
+    RENDER = False
+    
+    n_features = env.observation_space.shape[0]
+    n_hidden   = 4
+    n_actions  = 2
+    
+    max_episodes = 3000
+    max_steps = 200
 
-critic = Critic()
-actor = Actor()
+    xlabel = []
+    ylabel = []
 
-total_reward_vec = np.zeros(num_consecutice_iterations)
+    sess = tf.Session()
 
-for episode in range(num_episodes):
-    observation = env.reset()
-    state = digitize_state(observation)
-    episode_reward = 0
+    actor = Actor(
+            sess,
+            n_features = n_features,
+            n_actions  = n_actions,
+            learning_rate = 0.001
+    )
 
-    for t in range(max_step):
-        action = actor.get_action(state, episode)
-        observation, reward, done, info = env.step(action)
+    critic = Critic(
+            sess,
+            n_features = n_features,
+            learning_rate = 0.01,
+            gamma = 0.99
+    )
 
-        if done:
-            if t<195:
-                reward -= 200
-            else:
-                reward = 1
-        else:
-            reward = 1
-        episode_reward += reward
-        
-        next_state = digitize_state(observation)
+    sess.run(tf.global_variables_initializer())
 
-        td_error = critic.td_error(state, reward, next_state)
+    for episode in range(max_episodes):
+        state = env.reset()
+        episode_reward = 0
 
-        if td_error>0:
-            actor.update(state, action)
+        for step in range(max_steps):
+            if RENDER: env.render()
 
-        critic.update(state, reward, next_state)
+            action = actor.choose_action(state.reshape(1, n_features))
+            next_state, reward, done, _ = env.step(action[0][0])
 
-        state = next_state
 
-        if done:
-            print('%d Episode finished after %f time steps / mean %f' %
-                  (episode, t + 1, total_reward_vec.mean()))
-            total_reward_vec = np.hstack((total_reward_vec[1:], episode_reward))  #報酬を記録
-            break
- 
-    if (total_reward_vec.mean() >= goal_average_reward):  # 直近の100エピソードが規定報酬以上であれば成功
-        print('Episode %d train agent successfuly!' % episode)
-        break
+            if done:
+                reward = -20
+
+            episode_reward += reward
+
+            td_error = critic.learn(
+                    state.reshape(1, n_features), 
+                    reward, 
+                    next_state.reshape(1, n_features)
+            )
+
+            actor.learn(
+                    state.reshape(1, n_features),
+                    action[0][0],
+                    reward
+            )
+
+            if done:
+                print("episode:%3d reward:%3d" % (episode, episode_reward))
+                xlabel.append(episode)
+                ylabel.append(episode_reward)
+                break
+
+            next_state = state
+
+    plt.plot(xlabel, ylabel, 'b-')
+    plt.xlabel('episode steps')
+    plt.ylabel('episode rewards')
+    plt.show()
+
+if __name__ == '__main__':
+    main()

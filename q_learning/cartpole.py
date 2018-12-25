@@ -53,8 +53,7 @@ def get_action(next_state, episode):
 def update_Qtable(q_table, state, action, reward, next_action):
     gamma = 0.99
     alpha = 0.5
-    next_Max_Q = max(q_table[next_state][0], q_table[next_state][1])
-    q_table[state, action] = (1-alpha) * q_table[state, action] + alpha * (reward + gamma * next_Max_Q)
+    q_table[state, action] = (1-alpha) * q_table[state, action] + alpha * (reward + gamma * np.max(q_table[next_state]))
     return q_table
 
 goal_average_reward = 195

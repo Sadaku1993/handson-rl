@@ -2,6 +2,7 @@
 
 """
 CartPole-v0
+
     Observation: 
         Type: Box(4)
         Num	Observation                 Min         Max
@@ -17,8 +18,9 @@ CartPole-v0
         1	Push cart to the right
 """
 
-import numpy as np
 import gym
+import matplotlib.pyplot as plt
+import numpy as np
 
 # 状態を離散化
 def bins(state_min, state_max, num):
@@ -34,7 +36,7 @@ def digitize_state(observation, num_digitized):
     ]
     return sum([x*(num_digitized**i) for i, x in enumerate(digitized)])
 
-class Sarsa:
+class QLearning:
     def __init__(
             self,
             n_inputs,
@@ -45,16 +47,16 @@ class Sarsa:
     ):
         self.n_inputs = n_inputs
         self.n_outputs = n_outputs
-        self.num_digitized = num_digitized
+        self,num_digitized = num_digitized
         self.gamma = gamma
         self.alpha = alpha
 
         self.q_table = np.random.uniform(
-                low=-1, 
-                high=1, 
-                size=(self.num_digitized**4, self.n_outputs)
+                low = -1,
+                high = 1,
+                size = (self.num_digitized**4, self.n_outputs)
         )
-
+        
     def choose_action(
             self, 
             next_state, 
@@ -75,8 +77,6 @@ class Sarsa:
             next_state,
             next_action
     ):
-        self.q_table[state, action] = (1-self.alpha) * self.q_table[state, action] + \
-                self.alpha * (reward + self.gamma + self.q_table[next_state, next_action])
 
 
 def main():
@@ -84,17 +84,15 @@ def main():
     env = gym.make('CartPole-v0')
 
     n_inputs = env.observation_space.shape[0]
-    n_outpus = env.action_space.n
+    n_outputs = env.action_space.n
     num_digitized = 6
 
-    max_episodes = 2000
-    max_steps = 200
+    max_episode = 2000
+    max_step = 200
 
-    RENDER = False
-
-    agent = Sarsa(
+    agent = QLearning(
             n_inputs = n_inputs,
-            n_outputs = n_outpus,
+            n_outputs = n_outputs,
             num_digitized = num_digitized,
             gamma = 0.95,
             alpha = 0.5
@@ -110,7 +108,7 @@ def main():
         action = np.argmax(agent.q_table[state])
         episode_reward = 0
 
-        for step in range(max_steps):
+        for step in range(max_step):
             if RENDER:
                 env.render()
             observation, reward, done, info = env.step(action)
@@ -124,30 +122,9 @@ def main():
                 reward = 1
 
             episode_reward += reward
-            
+
             next_state = digitize_state(observation, num_digitized)
             next_action = agent.choose_action(next_state, episode)
-            
+
             agent.update_Qtable(
-                    state, 
-                    action, 
-                    reward, 
-                    next_state, 
-                    next_action
-            )
 
-            state = next_state
-            action = next_action
-
-            if done:
-                print('%d Episode finished after %f time steps / mean %f' %
-                      (episode, step + 1, total_reward_vec.mean()))
-                total_reward_vec = np.hstack((total_reward_vec[1:], episode_reward))  
-                break
-     
-        if (total_reward_vec.mean() >= goal_average_reward):
-            print('Episode %d train agent successfuly!' % episode)
-            break
-
-if __name__ == '__main__':
-    main()

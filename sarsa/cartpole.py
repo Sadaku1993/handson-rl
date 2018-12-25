@@ -103,3 +103,17 @@ for episode in range(num_episodes):
     if (total_reward_vec.mean() >= goal_average_reward):  # 直近の100エピソードが規定報酬以上であれば成功
         print('Episode %d train agent successfuly!' % episode)
         break
+
+for _ in range(10):
+    observation = env.reset()
+    state = digitize_state(observation)
+    action = np.argmax(q_table[state])
+    for i in range(max_step):
+        env.render()
+        observation, reward, done, info = env.step(action)
+        next_state = digitize_state(observation)
+        action = np.argmax(q_table[next_state])
+        state = next_state
+
+        if done:
+            break
