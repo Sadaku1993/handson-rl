@@ -3,10 +3,9 @@
 # Requirement
 
 - python2.7
-- gym
-- tensorflow
-- numpy
-- matplotlib
+- gym-0.10.9
+- tensorflow-1.12.0
+- numpy-1.15.4
 
 # Algorithms
 
