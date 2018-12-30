@@ -60,12 +60,6 @@ class Actor(object):
         self.normal_dist = tf.distributions.Normal(self.mu, self.sigma)
         self.action = tf.clip_by_value(self.normal_dist.sample(1), action_bound[0], action_bound[1])
 
-        # self.mu = tf.squeeze(mu*2)
-        # self.sigma = tf.squeeze(sigma+0.1)
-        # self.normal_dist = tf.distributions.Normal(self.mu, self.sigma)
-
-        # self.action = tf.clip_by_value(self.normal_dist.sample(1), action_bound[0], action_bound[1])
-
         with tf.name_scope('exp_v'):
             log_prob = self.normal_dist.log_prob(self.a)
             self.exp_v = log_prob * self.td_error
