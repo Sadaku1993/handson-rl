@@ -19,7 +19,6 @@ CartPole-v0
 """
 
 import gym
-import matplotlib.pyplot as plt
 import numpy as np
 
 # 状態を離散化
@@ -47,7 +46,7 @@ class QLearning:
     ):
         self.n_inputs = n_inputs
         self.n_outputs = n_outputs
-        self,num_digitized = num_digitized
+        self.num_digitized = num_digitized
         self.gamma = gamma
         self.alpha = alpha
 
@@ -77,7 +76,9 @@ class QLearning:
             next_state,
             next_action
     ):
-
+        next_Max_Q = max(self.q_table[next_state][0], self.q_table[next_state][1])
+        self.q_table[state, action] = (1-self.alpha) * self.q_table[state, action] \
+                                      + self.alpha * (reward + self.gamma * next_Max_Q)
 
 def main():
 
@@ -89,6 +90,8 @@ def main():
 
     max_episode = 2000
     max_step = 200
+
+    RENDER = False
 
     agent = QLearning(
             n_inputs = n_inputs,
@@ -102,7 +105,7 @@ def main():
     num_consecutice_iteratinos = 100
     total_reward_vec = np.zeros(num_consecutice_iteratinos)
 
-    for episode in range(max_episodes):
+    for episode in range(max_episode):
         observation = env.reset()
         state = digitize_state(observation, num_digitized)
         action = np.argmax(agent.q_table[state])
@@ -127,4 +130,25 @@ def main():
             next_action = agent.choose_action(next_state, episode)
 
             agent.update_Qtable(
+                    state, 
+                    action, 
+                    reward, 
+                    next_state, 
+                    next_action
+            )
 
+            state = next_state
+            action = next_action
+
+            if done:
+                print('%d Episode finished after %f time steps / mean %f' %
+                      (episode, step + 1, total_reward_vec.mean()))
+                total_reward_vec = np.hstack((total_reward_vec[1:], episode_reward))  
+                break
+     
+        if (total_reward_vec.mean() >= goal_average_reward):
+            print('Episode %d train agent successfuly!' % episode)
+            break
+
+if __name__ == '__main__':
+    main()
