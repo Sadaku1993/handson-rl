@@ -184,9 +184,6 @@ class DQN(object):
         if self.epsilon<0.1:
             self.epsilon = 0.1
 
-    def show_epsilon(self):
-        return self.epsilon
-
 def main():
 
     env = gym.make('CartPole-v0')
@@ -238,8 +235,8 @@ def main():
             state = next_state
 
             if done:
-                print('%d Episode finished after %f time steps / mean %f epsilon %f' %
-                      (episode, step + 1, total_reward_vec.mean(), dqn.show_epsilon()))
+                print('%d Episode finished after %f time steps / mean %f ' %
+                      (episode, step + 1, total_reward_vec.mean()))
                 total_reward_vec = np.hstack((total_reward_vec[1:], episode_reward))   
                 dqn.epsilon_decay(episode)
                 
