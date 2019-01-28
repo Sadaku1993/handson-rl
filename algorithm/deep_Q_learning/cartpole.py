@@ -32,7 +32,7 @@ class DQN(object):
             n_actions,
             lr = 0.00001,
             epsilon = 0.9,
-            replace_target_iter = 500,
+            replace_target_iter = 300,
             gamma = 0.99,
             memory_size = 5000,
             batch_size = 32
@@ -72,9 +72,8 @@ class DQN(object):
         self.s = tf.placeholder(tf.float32, [None, self.n_features], name='s')
         self.q_target = tf.placeholder(tf.float32, [None, self.n_actions], name='Q_target')
 
-        n_l1 = 16
-        n_l2 = 16
-        n_l3 = 32
+        n_l1 = 32
+        n_l2 = 32
         w_initializer = tf.random_normal_initializer(0., 1.)
         b_initializer = tf.constant_initializer(0.1)
 
@@ -87,14 +86,9 @@ class DQN(object):
                  l1 = tf.nn.relu(tf.matmul(self.s, w1) + b1)
 
              with tf.variable_scope('l2'):
-                 w2 = tf.get_variable('w2', [n_l1, n_l2], initializer=w_initializer, collections=c_names)
-                 b2 = tf.get_variable('b2', [1, n_l2], initializer=b_initializer, collections=c_names)
-                 l2 = tf.nn.relu(tf.matmul(l1, w2) + b2)
-
-             with tf.variable_scope('l3'):
-                 w3 = tf.get_variable('w3', [n_l2, self.n_actions], initializer=w_initializer, collections=c_names)
-                 b3 = tf.get_variable('b3', [1, self.n_actions], initializer=b_initializer, collections=c_names)
-                 self.q_eval = tf.matmul(l2, w3) + b3
+                 w2 = tf.get_variable('w2', [n_l1, self.n_actions], initializer=w_initializer, collections=c_names)
+                 b2 = tf.get_variable('b2', [1, self.n_actions], initializer=b_initializer, collections=c_names)
+                 self.q_eval = tf.matmul(l1, w2) + b2
     
         with tf.variable_scope('loss'):
             self.loss = tf.reduce_mean(tf.squared_difference(self.q_target, self.q_eval))
@@ -113,14 +107,9 @@ class DQN(object):
                 l1 = tf.nn.relu(tf.matmul(self.s_, w1) + b1)
 
             with tf.variable_scope('l2'):
-                w2 = tf.get_variable('w2', [n_l1, n_l2], initializer=w_initializer, collections=c_names)
-                b2 = tf.get_variable('b2', [1, n_l2], initializer=b_initializer, collections=c_names)
-                l2 = tf.nn.relu(tf.matmul(l1, w2) + b2)
-
-            with tf.variable_scope('l3'):
-                w3 = tf.get_variable('w3', [n_l2, self.n_actions], initializer=w_initializer, collections=c_names)
-                b3 = tf.get_variable('b3', [1, self.n_actions], initializer=b_initializer, collections=c_names)
-                self.q_next = tf.matmul(l2, w3) + b3
+                w2 = tf.get_variable('w2', [n_l1, self.n_actions], initializer=w_initializer, collections=c_names)
+                b2 = tf.get_variable('b2', [1, self.n_actions], initializer=b_initializer, collections=c_names)
+                self.q_next = tf.matmul(l1, w2) + b2
 
     def choose_action(self, observation):
         observation = observation[np.newaxis, :]
